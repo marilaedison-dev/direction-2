@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Which Way, Malik? – 3D Direction Game</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#9fd8ff;--ink:#1d2a44;--card:#fffffff0;--chip:#fff3c4;--ok:#1f8f4e;--bad:#d9453d;--blue:#2b6fd6;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b2233;--ink:#f3f6ff;--card:#232c42f0;--chip:#3a3f2a}}
+:root[data-theme="dark"]{--bg:#1b2233;--ink:#f3f6ff;--card:#232c42f0;--chip:#3a3f2a}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",system-ui,sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.ui{position:fixed;left:0;right:0;padding:10px;box-sizing:border-box;pointer-events:none;display:flex;gap:8px}
+#top{top:0;padding-top:calc(10px + env(safe-area-inset-top,0px));justify-content:space-between;align-items:flex-start}
+#bot{bottom:0;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));flex-direction:column;align-items:center}
+.card{background:var(--card);border-radius:16px;padding:8px 14px;box-shadow:0 4px 14px #0003;pointer-events:auto}
+button{font:inherit;cursor:pointer;border:0;border-radius:14px;color:inherit}
+.sm{background:var(--card);padding:8px 12px;box-shadow:0 3px 8px #0003;pointer-events:auto}
+#bubble{max-width:640px;width:100%;box-sizing:border-box}
+#bubble .who{color:#d6338a;font-weight:700}
+#say{font-size:1.1rem;font-weight:700;margin:2px 0}
+#idn{font-size:.9rem;opacity:.8;min-height:1em}
+#cmds{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:640px;width:100%}
+#cmds button{background:var(--blue);color:#fff;padding:10px 4px;font-size:.95rem;font-weight:700;pointer-events:auto;box-shadow:0 4px 0 #1a4a96}
+#cmds button:active{transform:translateY(3px);box-shadow:0 1px 0 #1a4a96}
+#cmds span{display:block;font-size:1.5rem}
+#msg{font-weight:700;min-height:1.3em;text-shadow:0 1px 3px #000a;color:#fff;pointer-events:none}
+.ok{color:#9dffb8!important}.bad{color:#ffb4ae!important}
+#words{display:none;position:fixed;top:calc(60px + env(safe-area-inset-top,0px));right:10px;max-width:220px}
+.chip{display:inline-block;background:var(--chip);border-radius:20px;padding:5px 11px;margin:3px;font-weight:700;cursor:pointer}
+#ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0006;padding:16px;box-sizing:border-box}
+#ov .box{max-width:460px;text-align:center;background:var(--card);border-radius:22px;padding:20px;box-shadow:0 8px 30px #0006}
+#ov h1{margin:0 0 6px;font-size:1.5rem}
+.big{background:#ff9800;color:#fff;padding:11px 18px;margin:5px;font-weight:700;box-shadow:0 4px 0 #b36b00}
+</style></head><body>
+<div class="ui" id="top">
+ <div class="card"><b id="mt">Which Way, Malik?</b><br><small id="pg"></small></div>
+ <div style="display:flex;gap:6px"><button class="sm" id="bView">🗺️ View</button><button class="sm" id="bWords">📘 Words</button></div>
+</div>
+<div class="card" id="words"></div>
+<div class="ui" id="bot">
+ <div id="msg"></div>
+ <div class="card" id="bubble"><span class="who">Aylin:</span> <button class="sm" id="bListen" style="padding:3px 10px">🔊 Listen</button>
+  <div id="say"></div></div>
+ <div id="cmds">
+  <button data-c="left"><span>⬅️</span>Turn left</button>
+  <button data-c="right"><span>➡️</span>Turn right</button>
+  <button data-c="straight"><span>⬆️</span>Go straight</button>
+  <button data-c="cross"><span>🚸</span>Cross</button>
+ </div>
+</div>
+<div id="ov"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+/* ---------- scene ---------- */
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd8ff);scene.fog=new THREE.Fog(0x9fd8ff,55,120);
+const cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,200);
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio,2));ren.setSize(innerWidth,innerHeight);document.body.prepend(ren.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x88aa77,.95));
+const sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(20,40,10);scene.add(sun);
+const mat=c=>new THREE.MeshLambertMaterial({color:c});
+function box(w,h,d,c,x,y,z,p=scene){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);p.add(m);return m}
+function label(t,x,y,z,s=1){const c=document.createElement('canvas');c.width=512;c.height=128;const g=c.getContext('2d');
+ g.fillStyle='#fff';g.strokeStyle='#1d4ed8';g.lineWidth=8;g.beginPath();(g.roundRect||g.rect).call(g,6,6,500,116,40);g.fill();g.stroke();
+ g.fillStyle='#1d2a44';g.font='bold 54px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t,256,66);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c)}));sp.scale.set(7*s,1.75*s,1);sp.position.set(x,y,z);scene.add(sp)}
+function house(x,z,c,w=4,d=4){box(w,3,d,c,x,1.5,z);const r=new THREE.Mesh(new THREE.ConeGeometry(Math.max(w,d)*.78,2,4),mat(0xc0553a));r.position.set(x,4,z);r.rotation.y=Math.PI/4;scene.add(r)}
+function tree(x,z){box(.4,1.6,.4,0x7a5230,x,.8,z);const t=new THREE.Mesh(new THREE.SphereGeometry(1.3,12,10),mat(0x2e9e4f));t.position.set(x,2.6,z);scene.add(t)}
+/* ground + roads */
+box(140,.2,140,0x7ccf6a,9,-.1,-7);
+box(5,.05,30,0x444b55,0,.03,-7);              // Kenanga Street
+box(31,.05,5,0x444b55,12.75,.04,-18);          // Melati Street
+box(2.5,.05,16,0x555d68,12,.08,-7.5);          // the lane
+box(2,.06,30,0xd0d0d0,-3.5,.05,-7);box(2,.06,23.5,0xd0d0d0,3.5,.05,-3.75);box(25.5,.06,2,0xd0d0d0,15.25,.06,-14.5);
+for(let i=-2;i<=2;i++)box(5,.02,.5,0xffffff,0,.07,i*.75);   // zebra crossing
+/* buildings */
+house(-9,-9,0xf4a6a6);house(-9,-17,0xa6c8f4);house(-9,-1,0xd9c6f0);
+const mk=box(6,3.5,5,0xe07b39,-10,1.75,0);box(6.4,.6,5.4,0xb5472a,-10,3.8,0);
+house(8,-6,0xbfe3a0);house(17,-4,0xf7c8a0);house(25,-4,0xa6e0e0);
+house(8,-25,0xa6c8f4);house(16,-25,0xf4a6d0);house(24,-25,0xf4e0a6);
+house(20,-10.5,0xffd93b);box(1,1.8,.2,0x8a5a2b,20,.9,-12.55); // Naya's house
+box(6,3.2,3,0x8e7cc3,12,1.6,1.6);box(6.4,.5,3.4,0x5a4a96,12,3.4,1.6); // library
+[[-7,-13],[6.5,-1],[10,-11],[15,-9],[28,-8],[-6,5],[20,-20.5]].forEach(p=>tree(...p));
+label("Kenanga Street",0,4,-9);label("Melati Street",16,4,-18);label("the lane",12,2.8,-7.5,.8);
+label("corner",2.5,2.6,-15.5,.7);label("zebra crossing",0,2.6,0,.8);label("Market",-10,5.2,0);
+label("Naya's house",20,6.4,-10.5,.9);label("Library",12,5.2,1.6);
+/* ---------- Malik ---------- */
+const M=new THREE.Group();scene.add(M);
+const body=new THREE.Mesh(new THREE.CylinderGeometry(.45,.5,1,16),mat(0x2b6fd6));body.position.y=1.15;M.add(body);
+const head=new THREE.Group();head.position.y=1.95;M.add(head);
+head.add(new THREE.Mesh(new THREE.SphereGeometry(.5,20,16),mat(0xf2c29b)));
+const hair=new THREE.Mesh(new THREE.SphereGeometry(.54,20,12,0,Math.PI*2,0,Math.PI/2.3),mat(0x2a1a12));hair.position.y=.08;head.add(hair);
+[-.17,.17].forEach(x=>{const e=new THREE.Mesh(new THREE.SphereGeometry(.06,8,8),mat(0x111111));e.position.set(x,-.02,.46);head.add(e)});
+function limb(x,y,c,len){const g=new THREE.Group();g.position.set(x,y,0);box(.22,len,.22,c,0,-len/2,0,g);M.add(g);return g}
+const legL=limb(-.2,.7,0x3a3a5a,.7),legR=limb(.2,.7,0x3a3a5a,.7);limb(-.58,1.55,0xf2c29b,.7);limb(.58,1.55,0xf2c29b,.7);
+function makeChar(shirt,hood,x,z,ry,name){const g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=ry;scene.add(g);
+ box(.9,1,.9,shirt,0,1.15,0,g);box(.5,.8,.5,0x3a3a5a,0,.4,0,g);
+ const h=new THREE.Group();h.position.y=1.95;g.add(h);
+ h.add(new THREE.Mesh(new THREE.SphereGeometry(.5,20,16),mat(0xf2c29b)));
+ h.add(new THREE.Mesh(new THREE.SphereGeometry(.57,20,14,Math.PI/2+.8,Math.PI*2-1.6,0,Math.PI/1.6),mat(hood)));
+ [-.17,.17].forEach(ex=>{const e=new THREE.Mesh(new THREE.SphereGeometry(.06,8,8),mat(0x111111));e.position.set(ex,0,.46);h.add(e)});
+ const arm=new THREE.Group();arm.position.set(.58,1.55,0);box(.22,.7,.22,0xf2c29b,0,-.35,0,arm);g.add(arm);
+ box(.22,.7,.22,0xf2c29b,-.58,1.2,0,g);label(name,x,4.2,z,.5);return arm}
+const nayaArm=makeChar(0xffd93b,0x3a2418,21.8,-13.3,-Math.PI/2,"Naya");
+const aylinArm=makeChar(0xe85d9b,0xf4a6c8,-5.8,-1.6,Math.PI/2,"Aylin");
+const P={x:-3.5,z:0,a:0};
+function place(){M.position.x=P.x;M.position.z=P.z;M.rotation.y=Math.PI/2-P.a}
+/* ---------- camera ---------- */
+let view='follow';const tp=new THREE.Vector3(),look=new THREE.Vector3(),cl=new THREE.Vector3();
+function camTarget(){if(view==='follow'){const dx=Math.cos(P.a),dz=Math.sin(P.a);tp.set(P.x-dx*8,6,P.z-dz*8);look.set(P.x+dx*5,1,P.z+dz*5)}else{tp.set(9,52,8);look.set(9,0,-7)}}
+function loop(){requestAnimationFrame(loop);const tt=performance.now()/150;nayaArm.rotation.z=2.5+Math.sin(tt)*.4;aylinArm.rotation.z=.1+Math.sin(tt/3)*.05;camTarget();cam.position.lerp(tp,.06);cl.lerp(look,.08);cam.lookAt(cl);ren.render(scene,cam)}
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
+$('#bView').onclick=()=>view=view==='follow'?'map':'follow';
+/* ---------- animation ---------- */
+function tween(dur,f){return new Promise(r=>{const t0=performance.now();(function s(n){const k=Math.min(1,(n-t0)/dur);f(k);k<1?requestAnimationFrame(s):r()})(t0)})}
+async function run(cmd,d){
+ if(cmd==='cross')await tween(1000,k=>{head.rotation.y=Math.sin(k*Math.PI*2)*.9});
+ head.rotation.y=0;
+ if(cmd==='left'||cmd==='right'){const a0=P.a,a1=a0+(cmd==='left'?-1:1)*Math.PI/2;await tween(600,k=>{P.a=a0+(a1-a0)*k;place()});return}
+ const x0=P.x,z0=P.z,dx=Math.cos(P.a),dz=Math.sin(P.a);
+ await tween(d/5*1000,k=>{P.x=x0+dx*d*k;P.z=z0+dz*d*k;place();const w=k*d*2.4;legL.rotation.x=Math.sin(w)*.7;legR.rotation.x=-Math.sin(w)*.7;M.position.y=Math.abs(Math.sin(w))*.1});
+ legL.rotation.x=legR.rotation.x=0;M.position.y=0}
+/* ---------- missions ---------- */
+const MS=[
+{t:"Mission 1: Naya's House",start:[-3.5,0,0],end:"Naya: Malik! You found my house!",steps:[
+ ['cross',7,"First, cross Kenanga Street at the zebra crossing. Look left and right first!","Pertama, seberangi Jalan Kenanga di zebra cross. Lihat kiri dan kanan dulu!"],
+ ['left',0,"Now turn left.","Sekarang belok kiri."],
+ ['straight',14.5,"Go straight on Kenanga Street to the corner.","Jalan lurus di Jalan Kenanga sampai sudut."],
+ ['right',0,"At the corner, turn right on Melati Street.","Di sudut, belok kanan ke Jalan Melati."],
+ ['straight',16.5,"Go straight to the end of Melati Street. Naya's house is on the right.","Lurus sampai ujung Jalan Melati. Rumah Naya ada di sebelah kanan."]]},
+{t:"Mission 2: The Library",start:[3.5,-14.5,0],end:"Aylin: Here is the library. Let's read!",steps:[
+ ['straight',8.5,"Go straight on Melati Street.","Jalan lurus di Jalan Melati."],
+ ['right',0,"Turn right into the lane.","Belok kanan ke gang."],
+ ['straight',12.5,"Go straight to the end of the lane. The library is in front of you.","Lurus sampai ujung gang. Perpustakaan ada di depanmu."]]},
+{t:"Mission 3: Back to the Market",start:[12,-2,-Math.PI/2],end:"Aylin: Welcome back to the market!",steps:[
+ ['straight',12.5,"You are at the library. Go straight to the end of the lane.",""],
+ ['left',0,"At the end of the lane, turn left on Melati Street.",""],
+ ['straight',8.5,"Go straight on Melati Street to the corner.",""],
+ ['left',0,"At the corner, turn left on Kenanga Street.",""],
+ ['straight',14.5,"Go straight on Kenanga Street.",""],
+ ['right',0,"Turn right at the zebra crossing.",""],
+ ['cross',7,"Look left and right. Then cross Kenanga Street.",""],
+ ['straight',2.5,"Go straight. The market is in front of you.",""]]}];
+let mi=0,si=0,busy=true,mist=0,hint=false;
+function speak(t){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=.85;speechSynthesis.speak(u)}catch(e){}}
+function flash(t,c){const m=$('#msg');m.textContent=t;m.className=c;clearTimeout(flash.t);flash.t=setTimeout(()=>m.textContent='',1800)}
+function show(){const s=MS[mi].steps[si];$('#say').textContent='🎧 Listen carefully!';$('#pg').textContent=`Step ${si+1}/${MS[mi].steps.length}`;speak(s[2])}
+function overlay(h){const o=$('#ov');o.style.display=h?'flex':'none';if(h)o.innerHTML='<div class="box">'+h+'</div>'}
+function loadMission(i){clearTimeout(window.fT);mi=i;si=0;mist=0;const m=MS[i];[P.x,P.z,P.a]=m.start;place();$('#mt').textContent=m.t;overlay(null);busy=false;show()}
+function menu(){clearTimeout(window.fT);busy=true;overlay(`<h1>🧭 Which Way, Malik?</h1><p>Dengarkan arahan Aylin, lalu pilih perintah yang benar untuk membantu Malik.<br><i>Listen to Aylin, then choose the right command.</i></p>
+ ${MS.map((m,i)=>`<button class="big" onclick="loadMission(${i})">${m.t}</button>`).join('<br>')}<br><button class="big" onclick="quizMode()">Mission 4: Quiz</button>`)}
+function finish(){if(mi===2)window.fT=setTimeout(quizMode,4500);const st=mist==0?3:mist<=2?2:1;speak(MS[mi].end);
+ overlay(`<h1>${'⭐'.repeat(st)}${'☆'.repeat(3-st)}</h1><p>Kesalahan / mistakes: ${mist}</p>
+ <button class="big" onclick="loadMission(${mi})">🔁 Replay</button>${mi==0?'<button class="big" onclick="quiz()">📝 True / False</button>':''}${mi<MS.length-1?`<button class="big" onclick="loadMission(${mi+1})">▶️ Next</button>`:''}<button class="big" onclick="menu()">📋 Menu</button>`)}
+document.querySelectorAll('#cmds button').forEach(b=>b.onclick=async()=>{
+ if(busy)return;const s=MS[mi].steps[si];
+ if(b.dataset.c!==s[0]){mist++;flash("Oops! Listen again 🎧 (Dengarkan lagi)",'bad');return}
+ busy=true;flash("Good! ✔️",'ok');await run(s[0],s[1]);si++;
+ if(si>=MS[mi].steps.length)setTimeout(finish,500);else{busy=false;show()}});
+$('#bListen').onclick=()=>{if(!busy)speak(MS[mi].steps[si][2])};
+
+/* vocabulary panel */
+const V=["turn left","turn right","go straight","cross","street","lane","corner","the end of"];
+$('#words').innerHTML='<b>Vocabulary</b><br>'+V.map(w=>`<span class="chip" onclick="speak('${w}')">🔊 ${w}</span>`).join('');
+$('#bWords').onclick=()=>{const w=$('#words');w.style.display=w.style.display==='block'?'none':'block'};
+/* True / False quiz (dari LKPD) */
+let QZ=[["Malik has lived in Kampung Melati for a long time.",0],["Aylin says: \"Cross Kenanga Street first.\"",1],["Naya's house is on the left side of Melati Street.",0]];
+let qi=0,qs=0,ql=false;
+const QZ0=QZ.slice();let qm=false;
+const QB=[["You use 'cross' when you go from one side of the street to the other side.",1],["A lane is bigger than a street.",0],["The corner is where two streets meet.",1],["Go straight means turn right.",0],["Naya's house is at the end of Melati Street.",1],["The library is at the end of the lane.",1],["Your left hand makes an L.",1],["Turn right means go to the left side.",0],["Malik crosses Kenanga Street at the zebra crossing.",1],["Malik turns right on Kenanga Street first.",0],["At the corner, Malik turns left on Melati Street.",0],["We look left and right before we cross the street.",1]];
+function quiz(){qm=false;QZ=QZ0.slice();qi=0;qs=0;qn()}
+function quizMode(){qm=true;$('#mt').textContent="Mission 4: Quiz";$('#pg').textContent="";QZ=QB.slice().sort(()=>Math.random()-.5).slice(0,8);qi=0;qs=0;qn()}
+function qn(){ql=false;if(qi>=QZ.length){overlay(`<h1>📝 ${qs}/${QZ.length}</h1><p>${qs==QZ.length?'Excellent!':'Good try!'}</p>${qm?'<button class="big" onclick="quizMode()">🔁 Again</button>':''}<button class="big" style="display:${qm?'none':'inline-block'}" onclick="loadMission(1)">▶️ Mission 2</button><button class="big" onclick="menu()">📋 Menu</button>`);return}
+ overlay(`<h1>True or False?</h1><p style="font-size:1.1rem"><b>${qi+1} / ${QZ.length}</b></p><button class="big" onclick="speak(QZ[qi][0])">🔊 Listen</button><br><button class="big" onclick="qa(1)">T</button><button class="big" onclick="qa(0)">F</button><div id="qf"></div>`);speak(QZ[qi][0])}
+function qa(v){if(ql)return;ql=true;const ok=v===QZ[qi][1];if(ok)qs++;$('#qf').innerHTML=ok?'✅ Correct!':'❌ Not quite.';setTimeout(()=>{qi++;qn()},1000)}
+/* start */
+place();camTarget();cam.position.copy(tp);cl.copy(look);loop();menu();
+</script></body></html>
